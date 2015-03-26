@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 
 #define MAXPENDING 5    /* Max connection requests */
 #define BUFFSIZE 32
@@ -22,7 +23,11 @@ void HandleClient(int sock) {
   while (received > 0) {
     /* Send back received data */
     if (send(sock, buffer, received, 0) != received) {
-      Die("Failed to send bytes to client");
+      perror("Failed to send bytes to client");
+    }
+    if (buffer[0] == 's' && buffer[1] == 'r' && buffer[2] == 'c') {
+      perror("stop receiving");
+      continue;
     }
     /* Check for more data */
     if ((received = recv(sock, buffer, BUFFSIZE, 0)) < 0) {
@@ -40,6 +45,8 @@ int main(int argc, char *argv[]) {
   int serversock, clientsock;
   struct sockaddr_in echoserver, echoclient;
   int sockop_reus;
+  int sockop_nodelay;
+  int sockop_kpalive;
   struct linger sockop_lg;
 
   if (argc != 2) {
@@ -52,7 +59,7 @@ int main(int argc, char *argv[]) {
   }
   // set sockt options
   sockop_reus = 1;
-  if (setsockopt(serversock, SOL_SOCKET, SO_REUSEADDR,&sockop_reus, sizeof(int)) < 0) {
+  if (setsockopt(serversock, SOL_SOCKET, SO_REUSEADDR, &sockop_reus, sizeof(int)) < 0) {
     Die("Failed to set socket option: reuse");
   }
   sockop_lg.l_onoff  = 1;
@@ -86,6 +93,14 @@ int main(int argc, char *argv[]) {
     }
     fprintf(stdout, "Client connected: %s\n",
                     inet_ntoa(echoclient.sin_addr));
+    sockop_nodelay = 1;
+    if (setsockopt(clientsock, SOL_TCP, TCP_NODELAY, &sockop_nodelay, sizeof(int)) < 0) {
+      Die("Failed to set socket option: nodelay");
+    }
+    sockop_kpalive = 1;
+    if (setsockopt(clientsock, SOL_SOCKET, SO_KEEPALIVE, &sockop_kpalive, sizeof(int)) < 0) {
+      Die("Failed to set socket option: keepalive");
+    }
     sockop_lg.l_onoff  = 1;
     sockop_lg.l_linger = 0;
     if (setsockopt(clientsock, SOL_SOCKET, SO_LINGER, &sockop_lg, sizeof(struct linger)) < 0) {
